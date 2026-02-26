@@ -23,7 +23,7 @@ libero_videos_prune/
 siglip_attention_heatmaps/
 gripper_images/
 gripper_samples/
-openpi/
+/openpi/
 
 # Data file formats
 *.h5

@@ -70,6 +70,12 @@ class Pi0Config(_model.BaseModelConfig):
     sparsevlm_num_retain: int = 192  # Number of vision tokens to retain (192, 128, 96, or 64)
     sparsevlm_method: str = "cross_attention"  # Method for computing text-visual attention: "cross_attention", "cosine", or "dot_product"
     sparsevlm_version: str = "1.5"  # SparseVLM version: "1.5" or "2.0" (SparseVLM+)
+    
+    # DART (Differentiable Adaptive Region Tokenizer) configuration
+    dart_enabled: bool = True  # Enable/disable DART
+    dart_num_patches: int = 196  # Target number of dynamic patches (default: 196 for 224x224, i.e., 14x14)
+    dart_scoring_backbone: str = "mobilenet_v3_small"  # Scoring network: "mobilenet_v3_small", "mnasnet", "squeezenet", "efficientnet_b0"
+    dart_temperature: float = 1.0  # Temperature for differentiable patch selection (higher = more random)
 
     def __post_init__(self):
         if self.max_token_len is None:

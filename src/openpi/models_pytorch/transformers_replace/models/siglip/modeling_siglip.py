@@ -42,6 +42,14 @@ except ImportError:
     _TOME_AVAILABLE = False
     _tome = None
 
+# Import DART for adaptive region tokenization
+try:
+    from openpi.models_pytorch.dart_pytorch import DartPatchEmbedding
+    _DART_AVAILABLE = True
+except ImportError:
+    _DART_AVAILABLE = False
+    DartPatchEmbedding = None
+
 
 logger = logging.get_logger(__name__)
 
@@ -225,18 +233,47 @@ class SiglipVisionEmbeddings(nn.Module):
         self.image_size = config.image_size
         self.patch_size = config.patch_size
 
-        self.patch_embedding = nn.Conv2d(
-            in_channels=config.num_channels,
-            out_channels=self.embed_dim,
-            kernel_size=self.patch_size,
-            stride=self.patch_size,
-            padding="valid",
-        )
-
-        self.num_patches = (self.image_size // self.patch_size) ** 2
-        self.num_positions = self.num_patches
-        self.position_embedding = nn.Embedding(self.num_positions, self.embed_dim)
-        self.register_buffer("position_ids", torch.arange(self.num_positions).expand((1, -1)), persistent=False)
+        # Check if DART is enabled
+        self.dart_enabled = getattr(config, 'dart_enabled', False)
+        
+        if self.dart_enabled and _DART_AVAILABLE and DartPatchEmbedding is not None:
+            # Use DART for adaptive patch selection
+            self.dart_patch_embedding = DartPatchEmbedding(
+                in_channels=config.num_channels,
+                embed_dim=self.embed_dim,
+                patch_size=self.patch_size,
+                image_size=self.image_size,
+                num_patches_target=getattr(config, 'dart_num_patches', 196),
+                scoring_backbone=getattr(config, 'dart_scoring_backbone', 'mobilenet_v3_small'),
+                temperature=getattr(config, 'dart_temperature', 1.0),
+                enabled=True,
+            )
+            self.patch_embedding = None
+            # Use full number of patches for position embedding (will be interpolated)
+            self.num_patches = (self.image_size // self.patch_size) ** 2
+            self.num_positions = self.num_patches
+            self.position_embedding = self.dart_patch_embedding.position_embedding
+            self.register_buffer("position_ids", torch.arange(self.num_patches).expand((1, -1)), persistent=False)
+            logger.info(
+                f"[DART] ✅ Enabled: num_patches_target={getattr(config, 'dart_num_patches', 196)}, "
+                f"scoring_backbone={getattr(config, 'dart_scoring_backbone', 'mobilenet_v3_small')}"
+            )
+        else:
+            # Standard patch embedding
+            self.dart_patch_embedding = None
+            self.patch_embedding = nn.Conv2d(
+                in_channels=config.num_channels,
+                out_channels=self.embed_dim,
+                kernel_size=self.patch_size,
+                stride=self.patch_size,
+                padding="valid",
+            )
+            self.num_patches = (self.image_size // self.patch_size) ** 2
+            self.num_positions = self.num_patches
+            self.position_embedding = nn.Embedding(self.num_positions, self.embed_dim)
+            self.register_buffer("position_ids", torch.arange(self.num_positions).expand((1, -1)), persistent=False)
+            if self.dart_enabled:
+                logger.warning("[DART] ⚠️ DART enabled in config but module not available, using standard patch embedding")
 
     def interpolate_pos_encoding(self, embeddings: torch.Tensor, height: int, width: int) -> torch.Tensor:
         """
@@ -277,16 +314,22 @@ class SiglipVisionEmbeddings(nn.Module):
         return patch_pos_embed
 
     def forward(self, pixel_values: torch.FloatTensor, interpolate_pos_encoding=False) -> torch.Tensor:
-        _, _, height, width = pixel_values.shape
-        target_dtype = self.patch_embedding.weight.dtype
-        patch_embeds = self.patch_embedding(pixel_values.to(dtype=target_dtype))  # shape = [*, width, grid, grid]
-        embeddings = patch_embeds.flatten(2).transpose(1, 2)
-
-        if interpolate_pos_encoding:
-            embeddings = embeddings + self.interpolate_pos_encoding(embeddings, height, width)
+        if self.dart_enabled and self.dart_patch_embedding is not None:
+            # Use DART for adaptive patch selection
+            embeddings = self.dart_patch_embedding(pixel_values, interpolate_pos_encoding=interpolate_pos_encoding)
+            return embeddings
         else:
-            embeddings = embeddings + self.position_embedding(self.position_ids)
-        return embeddings
+            # Standard patch embedding
+            _, _, height, width = pixel_values.shape
+            target_dtype = self.patch_embedding.weight.dtype
+            patch_embeds = self.patch_embedding(pixel_values.to(dtype=target_dtype))  # shape = [*, width, grid, grid]
+            embeddings = patch_embeds.flatten(2).transpose(1, 2)
+
+            if interpolate_pos_encoding:
+                embeddings = embeddings + self.interpolate_pos_encoding(embeddings, height, width)
+            else:
+                embeddings = embeddings + self.position_embedding(self.position_ids)
+            return embeddings
 
 
 # Copied from transformers.models.clip.modeling_clip.CLIPTextEmbeddings with CLIP->Siglip

@@ -139,6 +139,14 @@ class PI0Pytorch(nn.Module):
             "topk": getattr(config, 'leank_topk', True),
         }
         
+        # Prepare DART configuration for adaptive patch selection
+        dart_config = {
+            "enabled": getattr(config, 'dart_enabled', False),
+            "num_patches": getattr(config, 'dart_num_patches', 196),
+            "scoring_backbone": getattr(config, 'dart_scoring_backbone', 'mobilenet_v3_small'),
+            "temperature": getattr(config, 'dart_temperature', 1.0),
+        }
+        
         # Store SparseVLM configuration
         self.sparsevlm_config = {
             "enabled": getattr(config, 'sparsevlm_enabled', False),
@@ -178,6 +186,7 @@ class PI0Pytorch(nn.Module):
             v2drop_config=v2drop_config,
             snapkv_config=snapkv_config,
             leank_config=leank_config,
+            dart_config=dart_config,
         )
 
         self.action_in_proj = nn.Linear(32, action_expert_config.width)

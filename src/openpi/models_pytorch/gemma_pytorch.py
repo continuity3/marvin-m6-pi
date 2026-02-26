@@ -21,6 +21,7 @@ class PaliGemmaWithExpertModel(nn.Module):
         v2drop_config=None,  # V2Drop configuration dict: {enabled, ratio, method, interval, min_tokens}
         snapkv_config=None,  # SnapKV configuration dict: {enabled, compression_ratio, observation_window, clustering_method}
         leank_config=None,  # LeanK configuration dict: {enabled, pruning_ratio, method, topk}
+        dart_config=None,  # DART configuration dict: {enabled, num_patches, scoring_backbone, temperature}
     ):
         if use_adarms is None:
             use_adarms = [False, False]
@@ -61,6 +62,18 @@ class PaliGemmaWithExpertModel(nn.Module):
             setattr(vlm_config_hf.vision_config, 'tofu_use_fusion', tofu_config.get("use_fusion", True))
             setattr(vlm_config_hf.vision_config, 'tofu_fusion_ratio', tofu_config.get("fusion_ratio", 0.5))
             setattr(vlm_config_hf.vision_config, 'tofu_interval', tofu_config.get("interval", 1))
+        
+        # Pass DART configuration to vision_config
+        if dart_config is not None:
+            setattr(vlm_config_hf.vision_config, 'dart_enabled', dart_config.get("enabled", False))
+            setattr(vlm_config_hf.vision_config, 'dart_num_patches', dart_config.get("num_patches", 196))
+            setattr(vlm_config_hf.vision_config, 'dart_scoring_backbone', dart_config.get("scoring_backbone", "mobilenet_v3_small"))
+            setattr(vlm_config_hf.vision_config, 'dart_temperature', dart_config.get("temperature", 1.0))
+            if dart_config.get("enabled", False):
+                print(
+                    f"[DART] ✅ Enabled: num_patches={dart_config.get('num_patches', 196)}, "
+                    f"scoring_backbone={dart_config.get('scoring_backbone', 'mobilenet_v3_small')}"
+                )
         
         # Store V2Drop configuration
         self.v2drop_config = v2drop_config

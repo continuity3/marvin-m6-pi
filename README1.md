@@ -123,12 +123,59 @@ We provide detailed step-by-step examples for running inference of our pre-train
 
 ## Fine-Tuning Base Models on Your Own Data
 
-We will fine-tune the $\pi_{0.5}$ model on the [LIBERO dataset](https://libero-project.github.io/datasets) as a running example for how to fine-tune a base model on your own data. We will explain three steps:
-1. Convert your data to a LeRobot dataset (which we use for training)
-2. Defining training configs and running training
-3. Spinning up a policy server and running inference
+We will fine-tune the $\pi_{0.5}$ model on the [LIBERO dataset](https://libero-project.github.io/datasets) as a running example for how to fine-tune a base model on your own data. We will explain four steps:
+1. Convert ROS2 bag (db3) files to HDF5 format
+2. Convert your data to a LeRobot dataset (which we use for training)
+3. Defining training configs and running training
+4. Spinning up a policy server and running inference
 
-### 1. Convert your data to a LeRobot dataset
+### 1. Convert ROS2 bag (db3) files to HDF5 format
+
+If you have recorded robot data in ROS2 bag format (`.db3` files), you first need to convert them to HDF5 format. We provide a conversion script [`convert_ros2bag_to_hdf5_native_org.py`](convert_ros2bag_to_hdf5_native_org.py) that uses native ROS2 APIs.
+
+**Basic usage:**
+
+```bash
+# Convert a single ROS2 bag directory to HDF5
+uv run convert_ros2bag_to_hdf5_native_org.py <ros2_bag_dir> output.h5
+
+# Use original timestamp mode (instead of unified timeline)
+uv run convert_ros2bag_to_hdf5_native_org.py <ros2_bag_dir> output.h5 --original-mode
+
+# Specify target FPS for unified timeline mode
+uv run convert_ros2bag_to_hdf5_native_org.py <ros2_bag_dir> output.h5 --target-fps 30
+
+# Batch process all .db3 files in a directory
+uv run convert_ros2bag_to_hdf5_native_org.py dummy dummy --batch-root /path/to/root --target-fps 30
+
+# List topics in the bag without converting
+uv run convert_ros2bag_to_hdf5_native_org.py <ros2_bag_dir> output.h5 --list-topics
+```
+
+**Options:**
+- `--target-fps`: Target frame rate for unified timeline mode (default: 30.0)
+- `--original-mode`: Use original timestamps instead of unified timeline
+- `--image-topics`: Specify image topics to include
+- `--joint-topics`: Specify joint state topics to include
+- `--no-compression`: Disable JPEG compression for images
+- `--max-size WIDTH HEIGHT`: Limit maximum image dimensions
+
+**Verify HDF5 data with rerun:**
+
+After converting to HDF5, you can visualize and inspect the data using rerun:
+
+```bash
+# View HDF5 file with rerun
+uv run python view_hdf5_with_rerun.py /path/to/output.h5
+```
+
+This will open a rerun viewer showing:
+- Images (RGB, depth, etc.)
+- Gripper feedback data
+- Time series data
+- 3D trajectories (if position/orientation data is available)
+
+### 2. Convert your data to a LeRobot dataset
 
 We provide a minimal example script for converting LIBERO data to a LeRobot dataset in [`examples/libero/convert_libero_data_to_lerobot.py`](examples/libero/convert_libero_data_to_lerobot.py). You can easily modify it to convert your own data! You can download the raw LIBERO dataset from [here](https://huggingface.co/datasets/openvla/modified_libero_rlds), and run the script with:
 
@@ -138,7 +185,27 @@ uv run examples/libero/convert_libero_data_to_lerobot.py --data_dir /path/to/you
 
 **Note:** If you just want to fine-tune on LIBERO, you can skip this step, because our LIBERO fine-tuning configs point to a pre-converted LIBERO dataset. This step is merely an example that you can adapt to your own data.
 
-### 2. Defining training configs and running training
+**Verify LeRobot parquet data with rerun:**
+
+After converting to LeRobot format, you can visualize and inspect the parquet files using rerun:
+
+```bash
+# View LeRobot parquet file with rerun
+uv run python view_lerobot_parquet_with_rerun.py /path/to/episode_000000.parquet
+```
+
+The parquet file is typically located at:
+```
+~/.cache/huggingface/lerobot/<your_hf_username>/<dataset_name>/data/chunk-000/episode_000000.parquet
+```
+
+This will open a rerun viewer showing:
+- Images (camera image and wrist image)
+- EEF position trajectory (3D)
+- State and action time series
+- Gripper values
+
+### 3. Defining training configs and running training
 
 To fine-tune a base model on your own data, you need to define configs for data processing and training. We provide example configs with detailed comments for LIBERO below, which you can modify for your own dataset:
 
@@ -164,7 +231,7 @@ The command will log training progress to the console and save checkpoints to th
 
 **Note:** We provide functionality for *reloading* normalization statistics for state / action normalization from pre-training. This can be beneficial if you are fine-tuning to a new task on a robot that was part of our pre-training mixture. For more details on how to reload normalization statistics, see the [norm_stats.md](docs/norm_stats.md) file.
 
-### 3. Spinning up a policy server and running inference
+### 4. Spinning up a policy server and running inference
 
 Once training is complete, we can run inference by spinning up a policy server and then querying it from a LIBERO evaluation script. Launching a model server is easy (we use the checkpoint for iteration 20,000 for this example, modify as needed):
 

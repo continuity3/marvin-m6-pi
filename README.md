@@ -1,5 +1,7 @@
 # Marvin M6-Pi: HDF5 to LeRobot Data Conversion
 
+> 📖 **For the complete OpenPi documentation, see [README1.md](README1.md)**
+
 This repository provides tools for converting robot demonstration data from HDF5 format to LeRobot format, enabling training of vision-language-action (VLA) models using the [OpenPi](https://github.com/Physical-Intelligence/openpi) framework.
 
 ## Overview
